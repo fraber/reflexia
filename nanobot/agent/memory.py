@@ -579,6 +579,14 @@ class MemoryStore:
             allowed_dir=skills_dir,
             file_states=file_states,
         ))
+        # Agenoia Memory (write-only, dogfood): opt-in via NANOBOT_DREAM_AGENOIA=1
+        # (config wiring via DreamConfig.agenoia pending on this tree).
+        import os as _os
+
+        if _os.environ.get("NANOBOT_DREAM_AGENOIA", "").strip().lower() not in ("", "0", "false"):
+            from nanobot.agent.tools.agenoia import AgenoiaWriteTool
+
+            tools.register(AgenoiaWriteTool(workspace=workspace))
         return tools
 
     @staticmethod

@@ -102,4 +102,9 @@ For [SKILL] entries:
 - Inspect current file contents before editing; they are not embedded in the prompt to keep context compact.
 - Batch changes into as few calls as possible. Surgical edits only.
 
+## Agenoia Memory (only if the `agenoia_write` tool is available)
+- Near the end of the run — after ALL file edits are complete — call the `agenoia_write` tool ONCE (no arguments) to admit new facts from this workspace's history into Agenoia Memory (po52dev).
+- Report the writer's summary line (items/evidences admitted) in your final answer.
+- If it fails or admits nothing, continue normally: the memory files above remain the primary target. Never retry more than once.
+
 Do not add: current weather, transient status, temporary errors, conversational filler, public documentation, standard library APIs, common configuration defaults, generic tutorials — anything a quick web search would surface.
