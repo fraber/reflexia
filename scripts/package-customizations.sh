@@ -32,6 +32,44 @@ fi
 
 # --- 2. Config ---
 cp ~/.nanobot/config.json "$OUTPUT_DIR/config.json" 2>/dev/null || true
+
+# Strip all API keys / tokens / secrets from the packaged config.
+# Values in any field whose name contains key/token/secret (case-
+# insensitive) are blanked. Secrets stay in the live ~/.nanobot/config.json
+# and get injected per-instance via external volumes / nanobot-conf template.
+if [ -f "$OUTPUT_DIR/config.json" ]; then
+    python3 - "$OUTPUT_DIR/config.json" <<'PYEOF'
+import json, sys, re
+path = sys.argv[1]
+with open(path) as f:
+    cfg = json.load(f)
+
+SECRET_NAME = re.compile(r"key|token|secret|password|pgpass", re.I)
+stripped = []
+
+def scrub(node, path=""):
+    if isinstance(node, dict):
+        for k, v in list(node.items()):
+            kp = f"{path}.{k}" if path else k
+            if isinstance(v, str) and v and SECRET_NAME.search(k):
+                node[k] = ""
+                stripped.append(kp)
+            elif isinstance(v, (dict, list)):
+                scrub(v, kp)
+    elif isinstance(node, list):
+        for i, v in enumerate(node):
+            scrub(v, f"{path}[{i}]")
+
+scrub(cfg)
+with open(path, "w") as f:
+    json.dump(cfg, f, indent=2, ensure_ascii=False)
+    f.write("\n")
+
+print(f"  Stripped {len(stripped)} secret value(s):")
+for s in stripped:
+    print(f"    - {s}")
+PYEOF
+fi
 echo "  Config: config.json"
 
 # --- 3. Workspace files ---
@@ -62,10 +100,9 @@ for plugin in ~/.nanobot/workspace/plugins/*/; do
     fi
 done
 
-# --- 6. .pgpass (DB credentials) ---
-cp ~/.pgpass "$OUTPUT_DIR/.pgpass" 2>/dev/null && \
-    chmod 600 "$OUTPUT_DIR/.pgpass" || true
-echo "  DB auth: .pgpass"
+# --- 6. .pgpass is deliberately NOT packaged ---
+# Nanobot production is REST-only (no DB access), and secrets stay
+# in external volumes / per-instance config, never baked into the image.
 
 echo ""
 echo "Packaged into: $OUTPUT_DIR/"
