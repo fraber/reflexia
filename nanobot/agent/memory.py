@@ -539,7 +539,12 @@ class MemoryStore:
         prompt = f"{template}\n\n## Conversation History\n{history_text}"
         return (prompt, batch[-1]["cursor"])
 
-    def build_dream_tools(self):
+    def build_dream_tools(
+        self,
+        agenoia_enabled: bool = False,
+        agenoia_model: str | None = None,
+        agenoia_max_statements: int = 0,
+    ):
         """Build the restricted tool registry used by Dream runs."""
         from nanobot.agent.skills import BUILTIN_SKILLS_DIR
         from nanobot.agent.tools.apply_patch import ApplyPatchTool
@@ -579,14 +584,15 @@ class MemoryStore:
             allowed_dir=skills_dir,
             file_states=file_states,
         ))
-        # Agenoia Memory (write-only, dogfood): opt-in via NANOBOT_DREAM_AGENOIA=1
-        # (config wiring via DreamConfig.agenoia pending on this tree).
-        import os as _os
-
-        if _os.environ.get("NANOBOT_DREAM_AGENOIA", "").strip().lower() not in ("", "0", "false"):
+        # Agenoia Memory (write-only, dogfood): opt-in via dream.agenoia config.
+        if agenoia_enabled:
             from nanobot.agent.tools.agenoia import AgenoiaWriteTool
 
-            tools.register(AgenoiaWriteTool(workspace=workspace))
+            tools.register(AgenoiaWriteTool(
+                workspace=workspace,
+                model=agenoia_model,
+                max_statements=agenoia_max_statements,
+            ))
         return tools
 
     @staticmethod

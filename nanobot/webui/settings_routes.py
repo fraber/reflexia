@@ -313,6 +313,12 @@ class WebUISettingsRouter:
     async def _handle_settings_cli_apps(self, request: WsRequest) -> Response:
         if not self._authorized(request):
             return self._unauthorized()
+        if not load_config().tools.cli_apps.enable:
+            # CLI Apps disabled: never touch the registry catalog (its blocking
+            # HTTP fetch would stall the event loop). Return an empty payload.
+            return self._json_response(
+                {"apps": [], "installed_count": 0, "catalog_updated_at": None}
+            )
         installed_only = (_query_first(self._query(request), "installed_only") or "").lower() in {
             "1",
             "true",
@@ -332,6 +338,8 @@ class WebUISettingsRouter:
     ) -> Response:
         if not self._authorized(request):
             return self._unauthorized()
+        if not load_config().tools.cli_apps.enable:
+            return self._error_response(404, "CLI Apps are disabled")
         try:
             payload = await asyncio.to_thread(cli_apps_action, action, self._query(request))
         except WebUISettingsError as e:

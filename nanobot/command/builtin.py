@@ -371,11 +371,18 @@ async def cmd_dream(ctx: CommandContext) -> OutboundMessage:
                 return
             prompt, last_cursor = result
             key = dream_session_key()
+            from nanobot.config.loader import load_config
+
+            dream_cfg = load_config().agents.defaults.dream
             resp = await loop.process_direct(
                 prompt,
                 session_key=key,
                 ephemeral=True,
-                tools=store.build_dream_tools(),
+                tools=store.build_dream_tools(
+                    agenoia_enabled=dream_cfg.agenoia,
+                    agenoia_model=dream_cfg.agenoia_model,
+                    agenoia_max_statements=dream_cfg.agenoia_max_statements,
+                ),
                 on_progress=_silent,
             )
             elapsed = time.monotonic() - t0

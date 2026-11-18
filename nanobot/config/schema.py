@@ -66,8 +66,8 @@ class DreamConfig(Base):
     )  # Override model for Dream sessions (pending implementation)
     max_batch_size: int = Field(default=20, ge=1)  # Deprecated: no longer used
     # Agenoia Memory integration (write-only, dogfood): when true, Dream runs get
-    # the `agenoia_write` tool (incremental writer against po52dev). On this tree
-    # the switch is additionally honored via NANOBOT_DREAM_AGENOIA=1.
+    # the `agenoia_write` tool (incremental writer against po52dev). Wired into
+    # build_dream_tools() by command/builtin.py and cli/commands.py.
     agenoia: bool = Field(default=False)
     agenoia_model: str | None = Field(default=None)  # writer extraction model (OpenRouter)
     agenoia_max_statements: int = Field(default=0, ge=0)  # admission budget per run (0 = unlimited)

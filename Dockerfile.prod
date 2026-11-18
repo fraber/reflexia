@@ -1,55 +1,57 @@
-# Dockerfile.prod — thin overlay on top of the agenoia nanobot base image.
+# Dockerfile.prod — build the agenoia fork (Option B).
 #
-# Build context: /web/po52patches/  (contains nanobot/ ... not needed here —
-# only docker-customizations/ is used).
+# Build context: the fork root (this repo).
 #
-#   docker build -f nanobot/Dockerfile.prod -t nanobot-prod:latest .
+#   docker build -f Dockerfile.prod -t agenoia-prod:latest .
 #
-# The base image provides: Python runtime, installed nanobot package,
-# prebuilt WebUI, entrypoint.sh, non-root user nanobot (uid 1000).
-# This overlay adds only our customizations:
-#   1. patched site-packages files (from package-customizations.sh)
-#   2. workspace assets (skills, plugins, bootstrap MD files)
+# The base image (upstream nanobot, tag-pinned) provides: Python runtime, uv,
+# system dependencies, prebuilt WebUI (nanobot/web/dist), entrypoint.sh,
+# non-root user nanobot.
+# This image installs the fork source into system Python. Agenoia changes are
+# normal source files in the fork (config/schema.py, agent/loop.py,
+# agent/memory.py, webui/settings_routes.py, agent/tools/agenoia.py) — there is
+# no patch-overlay machinery and no site-packages-patches tree anymore.
+#
+# WebUI: the fork source ships no prebuilt nanobot/web/dist (it is normally
+# built by a hatch hook requiring node). Since Agenoia makes no WebUI changes,
+# we reuse the base image's prebuilt dist (stashed before install, because the
+# install of the fork replaces the old nanobot package files).
+#
 # Secrets (config.json, .pgpass) are NEVER baked in — mounted as volumes.
 
-ARG NANOBOT_BASE=agenoia-nanobot:latest
+ARG NANOBOT_BASE=nanobot-base:2026-11-17
 FROM ${NANOBOT_BASE}
 
-# --- 1. Apply site-packages patches -----------------------------------------
-# package-customizations.sh stores files relative to site-packages, so the
-# same tree applies to system python (/usr/local/lib/python3.12/site-packages).
-COPY docker-customizations/site-packages-patches/ /tmp/sp-patches/
+USER root
+
+# --- 1. Install the fork into system Python ---------------------------------
+COPY . /tmp/agenoia-src/
 
 RUN set -e; \
     SP="$(python3 -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"; \
     echo "site-packages: $SP"; \
-    find /tmp/sp-patches -type f | while read -r f; do \
-        rel="${f#/tmp/sp-patches/}"; \
-        dest="$SP/$rel"; \
-        if [ ! -f "$dest" ]; then \
-            echo "PATCH VERIFY FAILED: target does not exist in base image: $dest" >&2; \
-            exit 1; \
-        fi; \
-        mkdir -p "$(dirname "$dest")"; \
-        cp "$f" "$dest"; \
-        if ! cmp -s "$f" "$dest"; then \
-            echo "PATCH VERIFY FAILED: copy mismatch: $dest" >&2; \
-            exit 1; \
-        fi; \
-        echo "patched: $rel"; \
-    done; \
+    # Stash the base image's prebuilt WebUI dist before the fork install.
+    test -f "$SP/nanobot/web/dist/index.html" \
+        || { echo "BUILD FAILED: base image has no prebuilt WebUI dist" >&2; exit 1; }; \
+    cp -a "$SP/nanobot/web/dist" /tmp/webui-dist; \
+    NANOBOT_SKIP_WEBUI_BUILD=1 uv pip install --system --no-cache ".[whatsapp]"; \
+    SP2="$(python3 -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"; \
+    # Reuse the base image's prebuilt WebUI (fork makes no WebUI changes).
+    mkdir -p "$SP2/nanobot/web"; \
+    rm -rf "$SP2/nanobot/web/dist"; \
+    cp -a /tmp/webui-dist "$SP2/nanobot/web/dist"; \
+    # Verify: fork actually installed, Agenoia customizations present, WebUI intact.
     python3 -c "import nanobot, nanobot.config.schema, nanobot.webui.settings_routes, nanobot.agent.memory, nanobot.agent.loop" \
-        || { echo "PATCH VERIFY FAILED: patched modules do not import" >&2; exit 1; }; \
-    rm -rf /tmp/sp-patches
+        || { echo "BUILD FAILED: installed modules do not import" >&2; exit 1; }; \
+    test -f "$SP2/nanobot/agent/tools/agenoia.py" \
+        || { echo "BUILD FAILED: agenoia tool missing after install" >&2; exit 1; }; \
+    test -f "$SP2/nanobot/web/dist/index.html" \
+        || { echo "BUILD FAILED: WebUI dist missing after install" >&2; exit 1; }; \
+    echo "verify OK: fork installed with agenoia customizations"; \
+    rm -rf /tmp/agenoia-src /tmp/webui-dist
 
 # --- 2. Workspace customizations --------------------------------------------
-# Per-instance state (config.json, memory/, sessions) stays on the mounted
-# volume; these are install-wide defaults.
-COPY --chown=nanobot:nanobot docker-customizations/AGENTS.md    /home/nanobot/.nanobot/workspace/AGENTS.md
-COPY --chown=nanobot:nanobot docker-customizations/SOUL.md      /home/nanobot/.nanobot/workspace/SOUL.md
-COPY --chown=nanobot:nanobot docker-customizations/USER.md      /home/nanobot/.nanobot/workspace/USER.md
-COPY --chown=nanobot:nanobot docker-customizations/HEARTBEAT.md /home/nanobot/.nanobot/workspace/HEARTBEAT.md
-COPY --chown=nanobot:nanobot docker-customizations/workspace/skills/  /home/nanobot/.nanobot/workspace/skills/
-COPY --chown=nanobot:nanobot docker-customizations/workspace/plugins/ /home/nanobot/.nanobot/workspace/plugins/
-
-# Keep base image ENTRYPOINT/CMD (entrypoint.sh, CMD ["status"])
+# Per-instance state (config.json, .pgpass, memory/, sessions) stays on the
+# mounted volume and is populated per instance (createserver52-docker.sh);
+# skills/plugins are added per instance under workspace/. Nothing else is
+# baked into the image.
