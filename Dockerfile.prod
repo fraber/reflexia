@@ -37,10 +37,12 @@ RUN set -e; \
     test -f "$SP/nanobot/web/dist/index.html" \
         || { echo "BUILD FAILED: base image has no prebuilt WebUI dist" >&2; exit 1; }; \
     cp -a "$SP/nanobot/web/dist" /tmp/webui-dist; \
-    NANOBOT_SKIP_WEBUI_BUILD=1 uv pip install --system --no-cache ".[whatsapp]"; \
+    NANOBOT_SKIP_WEBUI_BUILD=1 uv pip install --system --no-cache ".[whatsapp,api]"; \
     # Bake external channel plugins (entry-point group nanobot.channels).
     # --no-deps: the plugin's only dependency (nanobot-ai>=0.2.1) is exactly
     # the fork installed in the previous line; avoid any index resolution.
+    # The "api" extra pulls aiohttp, which po_openai_channel imports at
+    # module level (aiohttp is in no nanobot core dep and no channel extra).
     uv pip install --system --no-cache --no-deps /tmp/agenoia-src/plugins/nanobot-po-channel; \
     SP2="$(python3 -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"; \
     # Reuse the base image's prebuilt WebUI (fork makes no WebUI changes).
