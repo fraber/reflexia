@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nanobot-po-channel"
+version = "0.1.0"
+description = "]project-open[ OpenAI-compatible synchronous HTTP channel plugin for nanobot"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["nanobot-ai>=0.2.1"]
+
+[project.entry-points."nanobot.channels"]
+"projop-openai" = "po_openai_channel.channel:ProjopOpenAIChannel"
+
+[tool.setuptools.packages.find]
+include = ["po_openai_channel*"]

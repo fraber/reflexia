@@ -13,3 +13,7 @@
  bridge/dist/
  workspace/
  docker-customizations/
+ venv/
+ tests/
+ docs/
+ case/

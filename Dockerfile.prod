@@ -11,6 +11,9 @@
 # normal source files in the fork (config/schema.py, agent/loop.py,
 # agent/memory.py, webui/settings_routes.py, agent/tools/agenoia.py) — there is
 # no patch-overlay machinery and no site-packages-patches tree anymore.
+# External channel plugins (nanobot-po-channel) are vendored under plugins/
+# and baked into the image — nanobot loads channels via importlib entry
+# points, so a plugin that only lives in the workspace volume is ignored.
 #
 # WebUI: the fork source ships no prebuilt nanobot/web/dist (it is normally
 # built by a hatch hook requiring node). Since Agenoia makes no WebUI changes,
@@ -35,6 +38,10 @@ RUN set -e; \
         || { echo "BUILD FAILED: base image has no prebuilt WebUI dist" >&2; exit 1; }; \
     cp -a "$SP/nanobot/web/dist" /tmp/webui-dist; \
     NANOBOT_SKIP_WEBUI_BUILD=1 uv pip install --system --no-cache ".[whatsapp]"; \
+    # Bake external channel plugins (entry-point group nanobot.channels).
+    # --no-deps: the plugin's only dependency (nanobot-ai>=0.2.1) is exactly
+    # the fork installed in the previous line; avoid any index resolution.
+    uv pip install --system --no-cache --no-deps /tmp/agenoia-src/plugins/nanobot-po-channel; \
     SP2="$(python3 -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"; \
     # Reuse the base image's prebuilt WebUI (fork makes no WebUI changes).
     mkdir -p "$SP2/nanobot/web"; \
@@ -47,11 +54,15 @@ RUN set -e; \
         || { echo "BUILD FAILED: agenoia tool missing after install" >&2; exit 1; }; \
     test -f "$SP2/nanobot/web/dist/index.html" \
         || { echo "BUILD FAILED: WebUI dist missing after install" >&2; exit 1; }; \
-    echo "verify OK: fork installed with agenoia customizations"; \
+    python3 -c "from importlib.metadata import entry_points; \
+eps = [e for e in entry_points(group='nanobot.channels') if e.name == 'projop-openai']; \
+assert eps, 'projop-openai entry point missing'; eps[0].load()" \
+        || { echo "BUILD FAILED: nanobot-po-channel entry point not loadable" >&2; exit 1; }; \
+    echo "verify OK: fork installed with agenoia customizations + po-channel plugin"; \
     rm -rf /tmp/agenoia-src /tmp/webui-dist
 
 # --- 2. Workspace customizations --------------------------------------------
 # Per-instance state (config.json, .pgpass, memory/, sessions) stays on the
 # mounted volume and is populated per instance (createserver52-docker.sh);
-# skills/plugins are added per instance under workspace/. Nothing else is
-# baked into the image.
+# skills are added per instance under workspace/. Channel plugins are baked
+# into the image above. Nothing else is baked into the image.
