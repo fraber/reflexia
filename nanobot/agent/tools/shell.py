@@ -16,7 +16,7 @@ from loguru import logger
 from pydantic import Field
 
 from nanobot.agent.tools.base import Tool, ToolResult, tool_parameters
-from nanobot.agent.tools.context import current_request_session_key
+from nanobot.agent.tools.context import current_request_context, current_request_session_key
 from nanobot.agent.tools.exec_session import (
     DEFAULT_EXEC_SESSION_MANAGER,
     DEFAULT_MAX_OUTPUT_CHARS,
@@ -586,6 +586,20 @@ class ExecTool(Tool):
             val = os.environ.get(key)
             if val is not None:
                 env[key] = val
+
+        # Per-user ]po[ REST credentials: when the request arrived through a
+        # channel that carries ]po[ identity (e.g. projop-openai), forward
+        # the request-scoped auto-login token to subprocesses so REST-capable
+        # skill scripts (projop-rest) authenticate as the requesting user.
+        with suppress(Exception):
+            rc = current_request_context()
+            md = rc.metadata if rc is not None else None
+            po_user = md.get("po_user_id") if md else None
+            po_token = md.get("po_token") if md else None
+            if po_user:
+                env["PO_REST_USER_ID"] = str(po_user)
+            if po_token:
+                env["PO_REST_TOKEN"] = str(po_token)
         return env
 
     def _guard_command(

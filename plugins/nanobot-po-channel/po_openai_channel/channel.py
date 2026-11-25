@@ -283,6 +283,20 @@ class ProjopOpenAIChannel(BaseChannel):
         chat_id = f"po-user-{user_id}"
         sender_id = f"po-{user_id}"
 
+        # Per-thread sessions (D9): chat.tcl / chat-start.tcl forward the
+        # ]po[ ag_chat_thread id; the session key (chat_id) becomes
+        # "po-user-<uid>-t<thread_id>" so each thread keeps its own
+        # nanobot history. Absent/empty thread_id keeps the classic key.
+        thread_id = str(payload.get("thread_id") or "").strip()
+        if thread_id:
+            if not re.fullmatch(r"[0-9]+", thread_id):
+                return None, web.json_response(
+                    openai_error(f"invalid thread_id {thread_id!r}"),
+                    status=400,
+                    dumps=json_dumps_utf8,
+                )
+            chat_id = f"po-user-{user_id}-t{thread_id}"
+
         # Fail fast on policy rejection instead of hanging until the timeout.
         if not self.is_allowed(sender_id):
             return None, web.json_response(
@@ -499,7 +513,14 @@ class ProjopOpenAIChannel(BaseChannel):
         future, so it is dropped as well - the job stops waiting at once
         instead of running into the reply timeout.
         """
-        chat_id = f"po-user-{job['user_id']}"
+        # Recover the session key from the active-job registry (sync
+        # requests and jobs share the per-chat concurrency guard, so the
+        # running job's chat_id - including its "-t<thread_id>" suffix -
+        # is the one mapped to this job_id). Fallback: classic key.
+        chat_id = next(
+            (cid for cid, jid in self._active_jobs.items() if jid == job_id),
+            f"po-user-{job['user_id']}",
+        )
         sender_id = f"po-{job['user_id']}"
 
         # Freeze first: a reply racing in must not flip the state back.
