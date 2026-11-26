@@ -213,6 +213,12 @@ class ProjopOpenAIChannel(BaseChannel):
         meta = msg.metadata or {}
         if any(str(k).startswith("_") and v for k, v in meta.items()):
             return
+        if not (msg.content or "").strip():
+            # Empty outbound (e.g. blank pre-tool assistant turn) is never a
+            # final reply — resolving the future with "" produces an empty
+            # bubble and orphans the real reply arriving seconds later.
+            self.logger.info(f"ignoring empty outbound for {msg.chat_id}")
+            return
         fut = self._pending.get(msg.chat_id)
         if fut is not None and not fut.done():
             # --- PROBE-G0: reply text as received from nanobot core --------
