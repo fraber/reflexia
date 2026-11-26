@@ -27,6 +27,11 @@ FROM ${NANOBOT_BASE}
 
 USER root
 
+# curl is required inside the container by the projop-rest skill/scripts
+# (base image ships without it); installed as root before switching back.
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 # --- 1. Install the fork into system Python ---------------------------------
 COPY . /tmp/agenoia-src/
 
